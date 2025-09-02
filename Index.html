@@ -1,0 +1,961 @@
+<!DOCTYPE html>
+<html lang="en" class="h-full">
+<head>
+
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title id="doc-title">Abdo Kotainy - Portfolio</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Cairo:wght@400;700;800&display=swap" rel="stylesheet">
+    <style>
+        body {
+            font-family: 'Cairo', sans-serif;
+            background-color: #0A0A0A;
+            color: #E5E7EB;
+            direction: ltr;
+            text-align: left;
+            background: radial-gradient(at 0% 0%, rgba(20, 20, 20, 1), rgba(10, 10, 10, 1), rgba(0, 0, 0, 1));
+        }
+        .container {
+            max-width: 1200px;
+        }
+        .loading-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background-color: rgba(0, 0, 0, 0.8);
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            z-index: 1000;
+        }
+        .spinner {
+            border: 4px solid rgba(255, 255, 255, 0.3);
+            border-top: 4px solid #6366f1;
+            border-radius: 50%;
+            width: 40px;
+            height: 40px;
+            animation: spin 1s linear infinite;
+        }
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+        .modal {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background-color: rgba(0, 0, 0, 0.7);
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            z-index: 1001;
+        }
+        .modal-content {
+            background-color: #1F2937;
+            padding: 2rem;
+            border-radius: 0.75rem;
+            text-align: left;
+            max-width: 600px;
+            width: 90%;
+            position: relative;
+            max-height: 90vh;
+            overflow-y: auto;
+        }
+        .modal-open {
+            overflow: hidden;
+        }
+        .message-box {
+            position: fixed;
+            top: 20px;
+            left: 20px;
+            padding: 1rem;
+            border-radius: 0.5rem;
+            color: white;
+            z-index: 1002;
+            transition: transform 0.3s ease-in-out, opacity 0.3s ease-in-out;
+            transform: translateY(-100px);
+            opacity: 0;
+        }
+        .message-box.show {
+            transform: translateY(0);
+            opacity: 1;
+        }
+    </style>
+</head>
+<body class="p-4 sm:p-8 min-h-full">
+
+    <!-- Firebase SDKs -->
+    <script type="module">
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
+        import { getAuth, signInAnonymously, signInWithCustomToken, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
+        import { getFirestore, doc, onSnapshot, collection, query, setDoc, addDoc, deleteDoc } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+        import { getStorage, ref, uploadBytes, getDownloadURL } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-storage.js";
+        import { setLogLevel } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+
+        // Set log level for debugging
+        setLogLevel('debug');
+
+        // Import the functions you need from the SDKs you need
+import { initializeApp } from "firebase/app";
+// TODO: Add SDKs for Firebase products that you want to use
+// https://firebase.google.com/docs/web/setup#available-libraries
+
+// Your web app's Firebase configuration
+const firebaseConfig = {
+  apiKey: "AIzaSyB04DF7lCC7Qub2zEnSnZ_4Sch-S6Gy0es",
+  authDomain: "abdo-kotainy.firebaseapp.com",
+  projectId: "abdo-kotainy",
+  storageBucket: "abdo-kotainy.firebasestorage.app",
+  messagingSenderId: "904945342258",
+  appId: "1:904945342258:web:69f733fc0a0f06aac5692b"
+};
+
+// Initialize Firebase
+const app = initializeApp(firebaseConfig);
+        
+        // Admin password
+        const ADMIN_PASSWORD = "442008";
+        
+        // Check for admin status on page load
+        let isAdmin = localStorage.getItem('isAdmin') === 'true';
+
+        // Initialize Firebase
+        let app, db, auth, storage;
+        let userId = null;
+        let serviceCategories = [];
+        let allProjects = [];
+        let currentFilter = 'All';
+
+        try {
+            const firebaseConfig = JSON.parse(firebaseConfigRaw);
+            if (Object.keys(firebaseConfig).length === 0) {
+                console.error("Firebase config is empty.");
+                showMessage("Firebase is not configured. Some features may not work.", "bg-red-500");
+            } else {
+                app = initializeApp(firebaseConfig);
+                db = getFirestore(app);
+                auth = getAuth(app);
+                storage = getStorage(app);
+            }
+        } catch (e) {
+            console.error("Error initializing Firebase:", e);
+            showMessage("Error initializing Firebase. Please check your configuration.", "bg-red-500");
+        }
+
+        // Get references to main UI elements
+        const portfolioContainer = document.getElementById('portfolio-items');
+        const projectCategoriesContainer = document.getElementById('project-categories');
+        const addProjectBtn = document.getElementById('add-project-btn');
+        const projectModal = document.getElementById('project-modal');
+        const projectForm = document.getElementById('project-form');
+        const closeBtn = document.getElementById('close-modal-btn');
+        const userDisplay = document.getElementById('user-display');
+        const aboutTextEl = document.getElementById('about-text');
+        const servicesTextEl = document.getElementById('services-text');
+        const contactSection = document.getElementById('contact-section');
+        const loadingOverlay = document.getElementById('loading-overlay');
+        const fileInput = document.getElementById('project-file');
+        const urlInput = document.getElementById('project-image-url');
+        const aboutEditBtn = document.getElementById('about-edit-btn');
+        const aboutModal = document.getElementById('about-modal');
+        const aboutForm = document.getElementById('about-form');
+        const contactEditBtn = document.getElementById('contact-edit-btn');
+        const contactModal = document.getElementById('contact-modal');
+        const contactForm = document.getElementById('contact-form');
+        const servicesEditBtn = document.getElementById('services-edit-btn');
+        const servicesModal = document.getElementById('services-modal');
+        const servicesForm = document.getElementById('services-form');
+        const websiteTitleEl = document.getElementById('website-title');
+        const docTitleEl = document.getElementById('doc-title');
+        const messageBox = document.getElementById('message-box');
+        const projectCategorySelect = document.getElementById('project-category-input');
+        const servicesInputContainer = document.getElementById('services-input-container');
+        const addServiceBtn = document.getElementById('add-service-btn');
+        const removeServiceBtn = document.getElementById('remove-service-btn');
+        const adminLoginModal = document.getElementById('admin-login-modal');
+        const adminLoginForm = document.getElementById('admin-login-form');
+        const adminLoginBtn = document.getElementById('admin-login-btn');
+        const adminLogoutBtn = document.getElementById('admin-logout-btn');
+        const profileImageEl = document.getElementById('profile-image');
+
+        // Function to toggle edit buttons and controls
+        function toggleAdminMode(show) {
+            const editButtons = [aboutEditBtn, servicesEditBtn, contactEditBtn, addProjectBtn, adminLogoutBtn];
+            const hideButtons = [adminLoginBtn];
+
+            editButtons.forEach(btn => {
+                if (btn) btn.classList.toggle('hidden', !show);
+            });
+            hideButtons.forEach(btn => {
+                if (btn) btn.classList.toggle('hidden', show);
+            });
+
+            // Re-render projects to show/hide edit buttons on project cards
+            renderProjects();
+        }
+
+       auth = getAuth(app);
+signInAnonymously(auth).then(() => {
+    userId = auth.currentUser.uid;
+    userDisplay.textContent = `User ID: ${userId}`;
+    setupAboutListener();
+    setupContactListener();
+    setupServicesListener();
+    setupPortfolioListener();
+}).catch((error) => {
+    console.error("Error signing in anonymously:", error);
+});
+        };
+        
+
+        // Firestore Setup and Listeners
+        function setupAboutListener() {
+            const docRef = doc(db, `/artifacts/${appId}/public/data/profile/about`);
+            onSnapshot(docRef, (docSnap) => {
+                if (docSnap.exists()) {
+                    aboutTextEl.textContent = docSnap.data().text;
+                } else {
+                    aboutTextEl.textContent = "I'm a passionate graphic designer dedicated to creating clean, impactful, and memorable visual identities for brands. With a focus on typography, color theory, and minimalist design principles, I help businesses tell their unique stories and connect with their audience.";
+                }
+            });
+        }
+
+        function setupServicesListener() {
+            const docRef = doc(db, `/artifacts/${appId}/public/data/profile/services`);
+            onSnapshot(docRef, (docSnap) => {
+                let html = '';
+                if (docSnap.exists() && docSnap.data().items) {
+                    serviceCategories = docSnap.data().items.map(item => item.title);
+                    docSnap.data().items.forEach(item => {
+                        html += `
+                            <div class="bg-gray-950 p-8 rounded-3xl shadow-2xl border border-gray-800 transition-transform transform hover:scale-105 hover:shadow-purple-500/30">
+                                <h3 class="text-2xl font-semibold mb-2 text-white">${item.title}</h3>
+                                <p class="text-gray-400">${item.description}</p>
+                            </div>
+                        `;
+                    });
+                } else {
+                    // Default values
+                    serviceCategories = ['Logo Design', 'Brand Identity', 'Print & Digital'];
+                    html = `
+                        <div class="bg-gray-950 p-8 rounded-3xl shadow-2xl border border-gray-800 transition-transform transform hover:scale-105 hover:shadow-purple-500/30">
+                            <h3 class="text-2xl font-semibold mb-2 text-white">Logo Design</h3>
+                            <p class="text-gray-400">Crafting unique and timeless logos that capture the essence of your brand.</p>
+                        </div>
+                        <div class="bg-gray-950 p-8 rounded-3xl shadow-2xl border border-gray-800 transition-transform transform hover:scale-105 hover:shadow-purple-500/30">
+                            <h3 class="text-2xl font-semibold mb-2 text-white">Brand Identity</h3>
+                            <p class="text-gray-400">Developing a complete brand system from color palettes to typography and style guides.</p>
+                        </div>
+                        <div class="bg-gray-950 p-8 rounded-3xl shadow-2xl border border-gray-800 transition-transform transform hover:scale-105 hover:shadow-purple-500/30">
+                            <h3 class="text-2xl font-semibold mb-2 text-white">Print & Digital</h3>
+                            <p class="text-gray-400">Designing beautiful publications and web-ready digital media.</p>
+                        </div>
+                    `;
+                }
+                servicesTextEl.innerHTML = html;
+                renderCategories();
+            });
+        }
+
+        function setupContactListener() {
+            const docRef = doc(db, `/artifacts/${appId}/public/data/profile/contact`);
+            onSnapshot(docRef, (docSnap) => {
+                if (docSnap.exists()) {
+                    const data = docSnap.data();
+                    document.getElementById('whatsapp-link').href = data.whatsapp || '#';
+                    document.getElementById('email-link').href = `mailto:${data.email || ''}`;
+                    document.querySelector('#contact-section a[href*="instagram"]').href = data.instagram || '#';
+                    document.querySelector('#contact-section a[href*="behance"]').href = data.behance || '#';
+                    document.getElementById('contact-text').textContent = data.text || '';
+                    websiteTitleEl.textContent = data.title || 'Abdo Kotainy';
+                    docTitleEl.textContent = data.title ? `${data.title} - Portfolio` : 'Abdo Kotainy - Portfolio';
+                    
+                    const profileImageUrl = data.profileImageUrl || 'https://placehold.co/150x150/1F2937/F3F4F6?text=AK';
+                    profileImageEl.src = profileImageUrl;
+                    
+                } else {
+                    document.getElementById('whatsapp-link').href = `https://wa.me/1234567890`;
+                    document.getElementById('email-link').href = `mailto:your.email@example.com`;
+                    document.querySelector('#contact-section a[href*="instagram"]').href = `https://www.instagram.com/your_handle`;
+                    document.querySelector('#contact-section a[href*="behance"]').href = `https://www.behance.net/your_handle`;
+                    document.getElementById('contact-text').textContent = "Ready to elevate your brand? Contact me for a free consultation.";
+                    websiteTitleEl.textContent = 'Abdo Kotainy';
+                    profileImageEl.src = 'https://placehold.co/150x150/1F2937/F3F4F6?text=AK';
+                }
+            });
+        }
+
+        function setupPortfolioListener() {
+            const q = query(collection(db, `/artifacts/${appId}/public/data/portfolio`));
+            onSnapshot(q, (querySnapshot) => {
+                allProjects = [];
+                if(!querySnapshot.empty) {
+                     querySnapshot.forEach((doc) => {
+                        const project = doc.data();
+                        project.id = doc.id;
+                        allProjects.push(project);
+                    });
+                }
+                renderProjects();
+            });
+        }
+
+        // UI Generation & Filtering
+        function renderCategories() {
+            projectCategoriesContainer.innerHTML = '';
+            
+            const allButton = document.createElement('button');
+            allButton.textContent = 'All';
+            allButton.className = `font-bold py-2 px-6 rounded-full transition-colors ${currentFilter === 'All' ? 'bg-purple-600 text-white' : 'bg-gray-900 text-gray-400 hover:bg-gray-800'}`;
+            allButton.onclick = () => filterProjects('All');
+            projectCategoriesContainer.appendChild(allButton);
+
+            serviceCategories.forEach(category => {
+                const button = document.createElement('button');
+                button.textContent = category;
+                button.className = `font-bold py-2 px-6 rounded-full transition-colors ${currentFilter === category ? 'bg-purple-600 text-white' : 'bg-gray-900 text-gray-400 hover:bg-gray-800'}`;
+                button.onclick = () => filterProjects(category);
+                projectCategoriesContainer.appendChild(button);
+            });
+        }
+
+        function filterProjects(category) {
+            currentFilter = category;
+            renderCategories();
+            renderProjects();
+        }
+
+        function renderProjects() {
+            portfolioContainer.innerHTML = '';
+            let projectsToRender = allProjects;
+
+            if (currentFilter !== 'All') {
+                projectsToRender = allProjects.filter(project => project.category === currentFilter);
+            }
+
+            if(projectsToRender.length === 0) {
+                 portfolioContainer.innerHTML = `<div class="bg-gray-900 rounded-3xl overflow-hidden shadow-lg border border-gray-800 col-span-full">
+                    <div class="p-6">
+                        <h3 class="text-xl font-semibold text-white text-center">No projects in this category yet.</h3>
+                    </div>
+                </div>`;
+            } else {
+                 projectsToRender.forEach(project => {
+                    createProjectCard(project);
+                });
+            }
+        }
+
+        function createProjectCard(project) {
+            const card = document.createElement('div');
+            card.className = "bg-gray-950 rounded-3xl overflow-hidden shadow-2xl border border-gray-800 transition-transform transform hover:scale-105 hover:shadow-purple-500/30 relative group";
+
+            const img = document.createElement('img');
+            img.src = project.imageUrl || "https://placehold.co/600x400/1F2937/F3F4F6?text=Project";
+            img.alt = project.title || "My project";
+            img.className = "w-full h-auto object-cover opacity-90 group-hover:opacity-100 transition-opacity";
+
+            const content = document.createElement('div');
+            content.className = "p-6";
+
+            const title = document.createElement('h3');
+            title.className = "text-xl font-bold text-white";
+            title.textContent = project.title || "Project Title";
+
+            const description = document.createElement('p');
+            description.className = "text-gray-400 mt-2";
+            description.textContent = project.description || "Project Description";
+
+            content.appendChild(title);
+            content.appendChild(description);
+            card.appendChild(img);
+            card.appendChild(content);
+
+            if (isAdmin) {
+                const buttonContainer = document.createElement('div');
+                buttonContainer.className = "absolute top-4 left-4 p-2 flex gap-2 opacity-0 group-hover:opacity-100 transition-opacity";
+
+                const editBtn = document.createElement('button');
+                editBtn.className = "bg-yellow-500 text-white p-2 rounded-full text-sm font-semibold hover:bg-yellow-600 transition-colors shadow-lg";
+                editBtn.textContent = 'Edit';
+                editBtn.onclick = () => openProjectModal(project);
+
+                const deleteBtn = document.createElement('button');
+                deleteBtn.className = "bg-red-500 text-white p-2 rounded-full text-sm font-semibold hover:bg-red-600 transition-colors shadow-lg";
+                deleteBtn.textContent = 'Delete';
+                deleteBtn.onclick = () => deleteProject(project.id);
+
+                buttonContainer.appendChild(editBtn);
+                buttonContainer.appendChild(deleteBtn);
+                card.appendChild(buttonContainer);
+            }
+
+            portfolioContainer.appendChild(card);
+        }
+
+        // CRUD Operations for Portfolio
+        async function saveProject(project) {
+            loadingOverlay.classList.remove('hidden');
+
+            let imageUrl = project.imageUrl;
+
+            if (project.file) {
+                try {
+                    const storageRef = ref(storage, `/artifacts/${appId}/public/images/${project.id || Date.now()}-${project.file.name}`);
+                    const uploadTask = await uploadBytes(storageRef, project.file);
+                    imageUrl = await getDownloadURL(uploadTask.ref);
+                    showMessage("Image uploaded successfully!", "bg-green-500");
+                } catch (e) {
+                    showMessage("Failed to upload image: " + e.message, "bg-red-500");
+                    console.error("Error uploading image: ", e);
+                    loadingOverlay.classList.add('hidden');
+                    return;
+                }
+            }
+
+            const projectData = {
+                title: project.title,
+                description: project.description,
+                imageUrl: imageUrl,
+                category: project.category
+            };
+
+            try {
+                if (project.id) {
+                    const docRef = doc(db, `/artifacts/${appId}/public/data/portfolio`, project.id);
+                    await setDoc(docRef, projectData, { merge: true });
+                } else {
+                    await addDoc(collection(db, `/artifacts/${appId}/public/data/portfolio`), projectData);
+                }
+                closeModal(projectModal);
+                showMessage("Project saved successfully!", "bg-green-500");
+            } catch (e) {
+                console.error("Error saving document: ", e);
+                showMessage("Failed to save project: " + e.message, "bg-red-500");
+            } finally {
+                loadingOverlay.classList.add('hidden');
+            }
+        }
+
+        async function deleteProject(id) {
+            try {
+                await deleteDoc(doc(db, `/artifacts/${appId}/public/data/portfolio`, id));
+                showMessage("Project deleted successfully!", "bg-green-500");
+            } catch (e) {
+                console.error("Error deleting document: ", e);
+                showMessage("Failed to delete project: " + e.message, "bg-red-500");
+            }
+        }
+
+        // CRUD Operations for About, Contact & Services
+        async function saveAbout(text) {
+            const docRef = doc(db, `/artifacts/${appId}/public/data/profile/about`);
+            try {
+                await setDoc(docRef, { text });
+                closeModal(aboutModal);
+                showMessage("About section updated successfully!", "bg-green-500");
+            } catch (e) {
+                console.error("Error saving About text: ", e);
+                showMessage("Failed to save data: " + e.message, "bg-red-500");
+            }
+        }
+
+        async function saveContact(data) {
+            const docRef = doc(db, `/artifacts/${appId}/public/data/profile/contact`);
+            try {
+                await setDoc(docRef, data);
+                closeModal(contactModal);
+                showMessage("Contact information updated successfully!", "bg-green-500");
+            } catch (e) {
+                console.error("Error saving Contact info: ", e);
+                showMessage("Failed to save data: " + e.message, "bg-red-500");
+            }
+        }
+
+        async function saveServices() {
+            const services = [];
+            const serviceInputs = servicesInputContainer.querySelectorAll('.service-input-group');
+            serviceInputs.forEach(group => {
+                const title = group.querySelector('.service-title-input').value;
+                const description = group.querySelector('.service-description-input').value;
+                if (title && description) {
+                    services.push({ title, description });
+                }
+            });
+
+            const docRef = doc(db, `/artifacts/${appId}/public/data/profile/services`);
+            try {
+                await setDoc(docRef, { items: services });
+                closeModal(servicesModal);
+                showMessage("Services section updated successfully!", "bg-green-500");
+            } catch (e) {
+                console.error("Error saving Services info: ", e);
+                showMessage("Failed to save data: " + e.message, "bg-red-500");
+            }
+        }
+
+        // Modal Logic
+        function openModal(modal) {
+            modal.classList.remove('hidden');
+            document.body.classList.add('modal-open');
+        }
+
+        function closeModal(modal) {
+            modal.classList.add('hidden');
+            document.body.classList.remove('modal-open');
+        }
+
+        function openProjectModal(project = null) {
+            projectForm.reset();
+            urlInput.disabled = false;
+            fileInput.disabled = false;
+
+            // Populate category dropdown
+            projectCategorySelect.innerHTML = '';
+            serviceCategories.forEach(category => {
+                const option = document.createElement('option');
+                option.value = category;
+                option.textContent = category;
+                projectCategorySelect.appendChild(option);
+            });
+
+            if (project) {
+                projectForm.dataset.projectId = project.id;
+                document.getElementById('project-title').value = project.title || '';
+                document.getElementById('project-description').value = project.description || '';
+                urlInput.value = project.imageUrl || '';
+                projectCategorySelect.value = project.category || serviceCategories[0];
+            } else {
+                delete projectForm.dataset.projectId;
+                projectCategorySelect.value = serviceCategories[0];
+            }
+            openModal(projectModal);
+        }
+
+        function openAboutModal() {
+            document.getElementById('about-text-input').value = aboutTextEl.textContent.trim();
+            openModal(aboutModal);
+        }
+
+        function openServicesModal() {
+            servicesInputContainer.innerHTML = '';
+            const services = [];
+            const titles = servicesTextEl.querySelectorAll('h3');
+            const descriptions = servicesTextEl.querySelectorAll('p');
+            for (let i = 0; i < titles.length; i++) {
+                services.push({
+                    title: titles[i].textContent,
+                    description: descriptions[i].textContent
+                });
+            }
+
+            services.forEach(service => addServiceInput(service));
+            if (services.length === 0) {
+                 addServiceInput();
+            }
+
+            openModal(servicesModal);
+        }
+
+        function addServiceInput(service = { title: '', description: '' }) {
+            const group = document.createElement('div');
+            group.className = "service-input-group p-4 mb-4 rounded-lg border border-gray-700 bg-gray-800";
+            group.innerHTML = `
+                <div class="mb-2">
+                    <label class="block text-gray-400 mb-1 text-sm">Service Title:</label>
+                    <input type="text" value="${service.title}" class="service-title-input w-full bg-gray-700 text-white rounded-lg p-2 focus:outline-none focus:ring-2 focus:ring-purple-500" placeholder="e.g. Logo Design">
+                </div>
+                <div>
+                    <label class="block text-gray-400 mb-1 text-sm">Description:</label>
+                    <textarea class="service-description-input w-full bg-gray-700 text-white rounded-lg p-2 focus:outline-none focus:ring-2 focus:ring-purple-500" rows="2" placeholder="e.g. Creating unique brand marks...">${service.description}</textarea>
+                </div>
+            `;
+            servicesInputContainer.appendChild(group);
+        }
+
+        function removeLastService() {
+            const groups = servicesInputContainer.querySelectorAll('.service-input-group');
+            if (groups.length > 1) {
+                groups[groups.length - 1].remove();
+            } else if (groups.length === 1) {
+                groups[0].remove();
+                addServiceInput();
+            }
+        }
+
+        function openContactModal() {
+            document.getElementById('website-title-input').value = websiteTitleEl.textContent.trim();
+            document.getElementById('contact-text-input').value = document.getElementById('contact-text').textContent.trim();
+            document.getElementById('contact-whatsapp-link-input').value = document.getElementById('whatsapp-link').href.startsWith('http') ? document.getElementById('whatsapp-link').href : '';
+            document.getElementById('contact-email-input').value = document.getElementById('email-link').href.replace('mailto:', '');
+            document.getElementById('contact-instagram-input').value = document.querySelector('#contact-section a[href*="instagram"]').href;
+            document.getElementById('contact-behance-input').value = document.querySelector('#contact-section a[href*="behance"]').href;
+            document.getElementById('contact-profile-image-input').value = profileImageEl.src.includes('placehold.co') ? '' : profileImageEl.src;
+            openModal(contactModal);
+        }
+
+        // Event Listeners
+        addProjectBtn.addEventListener('click', () => openProjectModal());
+        aboutEditBtn.addEventListener('click', () => openAboutModal());
+        contactEditBtn.addEventListener('click', () => openContactModal());
+        servicesEditBtn.addEventListener('click', () => openServicesModal());
+        document.getElementById('close-about-modal-btn').addEventListener('click', () => closeModal(aboutModal));
+        document.getElementById('close-contact-modal-btn').addEventListener('click', () => closeModal(contactModal));
+        document.getElementById('close-services-modal-btn').addEventListener('click', () => closeModal(servicesModal));
+        closeBtn.addEventListener('click', () => closeModal(projectModal));
+        adminLoginBtn.addEventListener('click', () => openModal(adminLoginModal));
+        document.getElementById('close-admin-modal-btn').addEventListener('click', () => {
+            document.getElementById('admin-password-input').value = '';
+            closeModal(adminLoginModal);
+        });
+
+        adminLogoutBtn.addEventListener('click', () => {
+            isAdmin = false;
+            localStorage.setItem('isAdmin', 'false');
+            toggleAdminMode(false);
+            showMessage("Logged out of admin mode.", "bg-purple-600");
+        });
+
+        projectForm.addEventListener('submit', (e) => {
+            e.preventDefault();
+            const project = {
+                id: projectForm.dataset.projectId,
+                title: document.getElementById('project-title').value,
+                description: document.getElementById('project-description').value,
+                imageUrl: urlInput.value,
+                file: fileInput.files[0],
+                category: projectCategorySelect.value
+            };
+            saveProject(project);
+        });
+
+        // Toggle inputs on file/url change
+        fileInput.addEventListener('change', () => {
+            if (fileInput.files.length > 0) {
+                urlInput.disabled = true;
+            } else {
+                urlInput.disabled = false;
+            }
+        });
+        urlInput.addEventListener('input', () => {
+            if (urlInput.value) {
+                fileInput.disabled = true;
+            } else {
+                fileInput.disabled = false;
+            }
+        });
+
+        aboutForm.addEventListener('submit', (e) => {
+            e.preventDefault();
+            const newText = document.getElementById('about-text-input').value;
+            saveAbout(newText);
+        });
+
+        servicesForm.addEventListener('submit', (e) => {
+            e.preventDefault();
+            saveServices();
+        });
+
+        addServiceBtn.addEventListener('click', () => addServiceInput());
+        removeServiceBtn.addEventListener('click', () => removeLastService());
+
+        contactForm.addEventListener('submit', (e) => {
+            e.preventDefault();
+            const data = {
+                title: document.getElementById('website-title-input').value,
+                whatsapp: document.getElementById('contact-whatsapp-link-input').value,
+                email: document.getElementById('contact-email-input').value,
+                instagram: document.getElementById('contact-instagram-input').value,
+                behance: document.getElementById('contact-behance-input').value,
+                text: document.getElementById('contact-text-input').value,
+                profileImageUrl: document.getElementById('contact-profile-image-input').value,
+            };
+            saveContact(data);
+        });
+
+        adminLoginForm.addEventListener('submit', (e) => {
+            e.preventDefault();
+            const password = document.getElementById('admin-password-input').value;
+            if (password === ADMIN_PASSWORD) {
+                isAdmin = true;
+                localStorage.setItem('isAdmin', 'true');
+                toggleAdminMode(true);
+                closeModal(adminLoginModal);
+                showMessage("Admin mode unlocked!", "bg-green-500");
+            } else {
+                showMessage("Incorrect password. Please try again.", "bg-red-500");
+            }
+            document.getElementById('admin-password-input').value = '';
+        });
+
+        function showMessage(msg, type) {
+            messageBox.textContent = msg;
+            messageBox.className = `message-box ${type} show`;
+            setTimeout(() => {
+                messageBox.classList.remove('show');
+            }, 3000);
+        }
+    </script>
+
+    <!-- About Modal -->
+    <div id="about-modal" class="modal hidden">
+        <div class="modal-content">
+            <button id="close-about-modal-btn" class="absolute top-4 right-4 text-white text-2xl">&times;</button>
+            <h3 class="text-2xl font-bold mb-4 text-white">Edit "About Me" Section</h3>
+            <form id="about-form">
+                <div class="mb-4">
+                    <label for="about-text-input" class="block text-gray-400 mb-2">Text:</label>
+                    <textarea id="about-text-input" rows="6" required class="w-full bg-gray-700 text-white rounded-lg p-3 focus:outline-none focus:ring-2 focus:ring-purple-500"></textarea>
+                </div>
+                <button type="submit" class="w-full bg-purple-600 text-white font-bold py-3 px-6 rounded-full hover:bg-purple-700 transition-colors">
+                    Save Changes
+                </button>
+            </form>
+        </div>
+    </div>
+
+    <!-- Services Modal -->
+    <div id="services-modal" class="modal hidden">
+        <div class="modal-content">
+            <button id="close-services-modal-btn" class="absolute top-4 right-4 text-white text-2xl">&times;</button>
+            <h3 class="text-2xl font-bold mb-4 text-white">Edit "My Services" Section</h3>
+            <form id="services-form">
+                <div id="services-input-container">
+                    <!-- Dynamic service inputs will be added here -->
+                </div>
+                <div class="flex gap-2">
+                    <button type="button" id="add-service-btn" class="flex-1 bg-green-600 text-white font-bold py-2 px-4 rounded-full hover:bg-green-700 transition-colors">
+                        Add Service
+                    </button>
+                    <button type="button" id="remove-service-btn" class="flex-1 bg-red-600 text-white font-bold py-2 px-4 rounded-full hover:bg-red-700 transition-colors">
+                        Remove Last
+                    </button>
+                </div>
+                <button type="submit" class="w-full bg-purple-600 text-white font-bold py-3 px-6 rounded-full hover:bg-purple-700 transition-colors mt-4">
+                    Save Services
+                </button>
+            </form>
+        </div>
+    </div>
+
+    <!-- Contact Modal -->
+    <div id="contact-modal" class="modal hidden">
+        <div class="modal-content">
+            <button id="close-contact-modal-btn" class="absolute top-4 right-4 text-white text-2xl">&times;</button>
+            <h3 class="text-2xl font-bold mb-4 text-white">Edit Contact Info</h3>
+            <form id="contact-form">
+                <div class="mb-4">
+                    <label for="website-title-input" class="block text-gray-400 mb-2">Website Title:</label>
+                    <input type="text" id="website-title-input" class="w-full bg-gray-700 text-white rounded-lg p-3 focus:outline-none focus:ring-2 focus:ring-purple-500">
+                </div>
+                <div class="mb-4">
+                    <label for="contact-profile-image-input" class="block text-gray-400 mb-2">Profile Photo URL:</label>
+                    <input type="url" id="contact-profile-image-input" class="w-full bg-gray-700 text-white rounded-lg p-3 focus:outline-none focus:ring-2 focus:ring-purple-500" placeholder="e.g. https://example.com/my-photo.jpg">
+                </div>
+                <div class="mb-4">
+                    <label for="contact-text-input" class="block text-gray-400 mb-2">Description Text:</label>
+                    <textarea id="contact-text-input" rows="3" required class="w-full bg-gray-700 text-white rounded-lg p-3 focus:outline-none focus:ring-2 focus:ring-purple-500"></textarea>
+                </div>
+                <div class="mb-4">
+                    <label for="contact-whatsapp-link-input" class="block text-gray-400 mb-2">WhatsApp Link:</label>
+                    <input type="url" id="contact-whatsapp-link-input" class="w-full bg-gray-700 text-white rounded-lg p-3 focus:outline-none focus:ring-2 focus:ring-purple-500" placeholder="e.g. https://wa.me/1234567890">
+                </div>
+                <div class="mb-4">
+                    <label for="contact-email-input" class="block text-gray-400 mb-2">Email:</label>
+                    <input type="email" id="contact-email-input" class="w-full bg-gray-700 text-white rounded-lg p-3 focus:outline-none focus:ring-2 focus:ring-purple-500">
+                </div>
+                <div class="mb-4">
+                    <label for="contact-instagram-input" class="block text-gray-400 mb-2">Instagram URL:</label>
+                    <input type="url" id="contact-instagram-input" class="w-full bg-gray-700 text-white rounded-lg p-3 focus:outline-none focus:ring-2 focus:ring-purple-500">
+                </div>
+                <div class="mb-4">
+                    <label for="contact-behance-input" class="block text-gray-400 mb-2">Behance URL:</label>
+                    <input type="url" id="contact-behance-input" class="w-full bg-gray-700 text-white rounded-lg p-3 focus:outline-none focus:ring-2 focus:ring-purple-500">
+                </div>
+                <button type="submit" class="w-full bg-purple-600 text-white font-bold py-3 px-6 rounded-full hover:bg-purple-700 transition-colors">
+                    Save Changes
+                </button>
+            </form>
+        </div>
+    </div>
+
+
+    <!-- Main Content -->
+    <div class="flex justify-center text-center text-sm mb-4">
+        <span id="user-display" class="text-gray-500">Authenticating...</span>
+    </div>
+
+    <!-- Header Section -->
+    <header class="text-center py-16">
+        <img id="profile-image" src="https://placehold.co/150x150/1F2937/F3F4F6?text=AK" alt="Profile Photo" class="w-40 h-40 rounded-full mx-auto mb-6 object-cover border-4 border-gray-800 shadow-xl transition-all hover:scale-105">
+        <h1 id="website-title" class="text-4xl sm:text-6xl font-extrabold tracking-tight text-white">Abdo Kotainy</h1>
+        <p class="mt-4 text-xl text-gray-400">Creative Graphic Designer & Brand Specialist</p>
+    </header>
+
+    <!-- About Section -->
+    <section id="about" class="container mx-auto py-12 px-4 sm:px-6 lg:px-8">
+        <div class="bg-gray-950 rounded-3xl shadow-2xl p-6 sm:p-10 relative border border-gray-800">
+            <h2 class="text-3xl font-bold mb-4 text-center text-white">About Me</h2>
+            <p id="about-text" class="text-lg text-gray-400 text-center max-w-2xl mx-auto">
+                I'm a passionate graphic designer dedicated to creating clean, impactful, and memorable visual identities for brands. With a focus on typography, color theory, and minimalist design principles, I help businesses tell their unique stories and connect with their audience.
+            </p>
+            <div id="about-edit-btn-container" class="absolute top-4 left-4">
+                <button id="about-edit-btn" class="bg-blue-500 text-white px-4 py-2 rounded-full text-sm font-semibold hover:bg-blue-600 transition-colors shadow-lg hidden">
+                    Edit
+                </button>
+            </div>
+        </div>
+    </section>
+
+    <!-- Services Section -->
+    <section id="services" class="container mx-auto py-12 px-4 sm:px-6 lg:px-8">
+        <div class="relative">
+            <h2 class="text-3xl font-bold mb-8 text-center text-white">My Services</h2>
+            <div id="services-text" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
+                <!-- Services content loaded by JS -->
+            </div>
+            <div id="services-edit-btn-container" class="absolute top-0 right-0">
+                <button id="services-edit-btn" class="bg-blue-500 text-white px-4 py-2 rounded-full text-sm font-semibold hover:bg-blue-600 transition-colors shadow-lg hidden">
+                    Edit
+                </button>
+            </div>
+        </div>
+    </section>
+
+    <!-- Portfolio Section -->
+    <section id="portfolio" class="container mx-auto py-12 px-4 sm:px-6 lg:px-8">
+        <h2 class="text-3xl font-bold mb-8 text-center text-white">My Portfolio</h2>
+
+        <!-- Category Filter Buttons -->
+        <div id="project-categories" class="flex flex-wrap justify-center gap-4 mb-8">
+            <!-- Categories populated by JS -->
+        </div>
+
+        <!-- Edit Mode Controls -->
+        <div id="edit-mode-controls" class="text-center mb-8">
+            <button id="add-project-btn" class="bg-purple-600 text-white font-bold py-3 px-8 rounded-full shadow-lg hover:bg-purple-700 transition-colors hidden">
+                Add a New Project
+            </button>
+        </div>
+
+        <!-- Portfolio Items will be populated here by JavaScript -->
+        <div id="portfolio-items" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-8">
+            <div class="bg-gray-900 rounded-3xl overflow-hidden shadow-lg border border-gray-800">
+                <div class="p-6">
+                    <h3 class="text-xl font-semibold text-white text-center animate-pulse">Loading projects...</h3>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- Contact Section -->
+    <section id="contact-section" class="container mx-auto py-12 px-4 sm:px-6 lg:px-8">
+        <div class="bg-gray-950 rounded-3xl shadow-2xl p-6 sm:p-10 text-center relative border border-gray-800">
+            <h2 class="text-3xl font-bold mb-4 text-white">Let's Collaborate</h2>
+            <p id="contact-text" class="text-lg text-gray-400 mb-6">Ready to elevate your brand? Contact me for a free consultation.</p>
+            <div class="flex flex-col sm:flex-row justify-center items-center space-y-4 sm:space-y-0 sm:space-x-8">
+                <a id="whatsapp-link" href="#" target="_blank" class="text-white text-lg font-semibold bg-purple-600 hover:bg-purple-700 py-3 px-6 rounded-full transition-colors duration-200">WhatsApp Me</a>
+                <a id="email-link" href="#" class="text-gray-400 hover:text-purple-500 transition-colors duration-200">
+                    <span class="text-xl font-semibold">Email</span>
+                </a>
+                <a href="https://www.instagram.com/your_handle" target="_blank" class="text-gray-400 hover:text-purple-500 transition-colors duration-200">
+                    <span class="text-xl font-semibold">Instagram</span>
+                </a>
+                <a href="https://www.behance.net/your_handle" target="_blank" class="text-gray-400 hover:text-purple-500 transition-colors duration-200">
+                    <span class="text-xl font-semibold">Behance</span>
+                </a>
+            </div>
+            <div id="contact-edit-btn-container" class="absolute top-4 left-4">
+                <button id="contact-edit-btn" class="bg-blue-500 text-white px-4 py-2 rounded-full text-sm font-semibold hover:bg-blue-600 transition-colors shadow-lg hidden">
+                    Edit
+                </button>
+            </div>
+        </div>
+    </section>
+
+    <!-- Footer -->
+    <footer class="text-center py-8 mt-12 text-gray-500 text-sm">
+        <p>&copy; 2024 Abdo Kotainy. All Rights Reserved.</p>
+        <div class="mt-4 flex justify-center space-x-4">
+            <button id="admin-login-btn" class="text-gray-400 hover:text-white transition-colors">Admin Login</button>
+            <button id="admin-logout-btn" class="text-red-400 hover:text-red-500 transition-colors hidden">Log Out</button>
+        </div>
+    </footer>
+
+    <!-- Project Modal for Adding/Editing Projects -->
+    <div id="project-modal" class="modal hidden">
+        <div class="modal-content">
+            <button id="close-modal-btn" class="absolute top-4 right-4 text-white text-2xl">&times;</button>
+            <h3 class="text-2xl font-bold mb-4 text-white">Add / Edit Project</h3>
+            <form id="project-form">
+                <div class="mb-4">
+                    <label for="project-title" class="block text-gray-400 mb-2">Project Title:</label>
+                    <input type="text" id="project-title" name="title" required class="w-full bg-gray-700 text-white rounded-lg p-3 focus:outline-none focus:ring-2 focus:ring-purple-500">
+                </div>
+                <div class="mb-4">
+                    <label for="project-description" class="block text-gray-400 mb-2">Project Description:</label>
+                    <textarea id="project-description" name="description" rows="3" required class="w-full bg-gray-700 text-white rounded-lg p-3 focus:outline-none focus:ring-2 focus:ring-purple-500"></textarea>
+                </div>
+                <div class="mb-4">
+                    <label for="project-category-input" class="block text-gray-400 mb-2">Category:</label>
+                    <select id="project-category-input" name="category" required class="w-full bg-gray-700 text-white rounded-lg p-3 focus:outline-none focus:ring-2 focus:ring-purple-500">
+                        <!-- Options populated by JS -->
+                    </select>
+                </div>
+
+                <!-- New file input for image upload -->
+                <div class="mb-4">
+                    <label for="project-file" class="block text-gray-400 mb-2">Upload a Project Image:</label>
+                    <input type="file" id="project-file" name="file" accept="image/*" class="w-full text-white rounded-lg p-3">
+                    <p class="text-gray-500 text-sm mt-1">Or enter an image URL (if you don't want to upload)</p>
+                </div>
+                <!-- Optional URL input for existing images -->
+                <div class="mb-4">
+                    <label for="project-image-url" class="block text-gray-400 mb-2">Image URL (Optional):</label>
+                    <input type="url" id="project-image-url" name="imageUrl" class="w-full bg-gray-700 text-white rounded-lg p-3 focus:outline-none focus:ring-2 focus:ring-purple-500">
+                </div>
+                <button type="submit" class="w-full bg-purple-600 text-white font-bold py-3 px-6 rounded-full hover:bg-purple-700 transition-colors">
+                    Save Project
+                </button>
+            </form>
+        </div>
+    </div>
+
+    <!-- Admin Login Modal -->
+    <div id="admin-login-modal" class="modal hidden">
+        <div class="modal-content">
+            <button id="close-admin-modal-btn" class="absolute top-4 right-4 text-white text-2xl">&times;</button>
+            <h3 class="text-2xl font-bold mb-4 text-white text-center">Admin Login</h3>
+            <p class="text-center text-gray-400 mb-6">Enter the password to access admin features.</p>
+            <form id="admin-login-form">
+                <div class="mb-4">
+                    <label for="admin-password-input" class="block text-gray-400 mb-2 sr-only">Password:</label>
+                    <input type="password" id="admin-password-input" name="password" required class="w-full bg-gray-700 text-white rounded-lg p-3 text-center focus:outline-none focus:ring-2 focus:ring-purple-500" placeholder="Enter password">
+                </div>
+                <button type="submit" class="w-full bg-purple-600 text-white font-bold py-3 px-6 rounded-full hover:bg-purple-700 transition-colors">
+                    Log In
+                </button>
+            </form>
+        </div>
+    </div>
+
+    <!-- Loading Overlay -->
+    <div id="loading-overlay" class="loading-overlay hidden">
+        <div>
+            <div class="spinner"></div>
+            <p class="text-white mt-4 text-lg">Uploading Image...</p>
+        </div>
+    </div>
+
+    <!-- Message Box for notifications -->
+    <div id="message-box" class="message-box"></div>
+
+</body>
+</html>
